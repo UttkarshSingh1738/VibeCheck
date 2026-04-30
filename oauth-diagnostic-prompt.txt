@@ -1,0 +1,7 @@
+Diagnose this Next.js + Auth.js (next-auth v5) + Spotify OAuth dev setup:
+
+- NEXTAUTH_URL is http://127.0.0.1:3000 (Spotify dashboard redirect URI matches).
+- Symptom: Browser shows ERR_TOO_MANY_REDIRECTS / “localhost redirected you too many times,” often after adding middleware that 307-redirects Host `localhost` → `127.0.0.1` for OAuth cookie alignment.
+- Ask: Why middleware-based localhost→loopback redirects commonly loop with Next.js Edge middleware + Auth.js; whether Host/x-forwarded-host or RSC/prefetch double-requests could alternate origins; and recommend a single client-side redirect after load vs middleware 307.
+
+Keep the answer short: root cause category + fix pattern.
