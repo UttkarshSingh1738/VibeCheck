@@ -87,6 +87,7 @@ pnpm build       # production build
 
 ## Troubleshooting
 
+- **Vercel log: `GET …supabase.co/rest/v1/users → 404`** — The `users` table is missing in **that** Supabase project. Open Supabase → SQL Editor → paste and run `supabase/schema.sql`. Use the same project as `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` on Vercel. Then sign out and sign in again so your row is inserted.
 - **Production deploy: browser opens `127.0.0.1` after Spotify login** — The deployed server still has dev `NEXTAUTH_URL` (loopback). Set `NEXTAUTH_URL` and `AUTH_URL` to your real public HTTPS origin (hosting dashboard / env vars), e.g. `https://yourdomain.com`, then add that callback in Spotify: `https://yourdomain.com/api/auth/callback/spotify`. Redeploy. Spotify follows whatever `redirect_uri` your app sends (from env), not the dashboard alone.
 - **Spotify redirect URI / “INVALID_CLIENT: Invalid redirect URI”** — Dashboard redirect URI, `NEXTAUTH_URL`, and the URL you open in the browser must all use the same host. For local dev use `http://127.0.0.1:3000` everywhere, not `localhost` (Spotify blocks `localhost` for new apps).
 - **"playlists fetch failed 401"** — your Spotify session expired. Sign out and back in.

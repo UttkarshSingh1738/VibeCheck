@@ -12,7 +12,13 @@ export default function NewBattlePage() {
       body: JSON.stringify({ playlistId })
     });
     if (!res.ok) {
-      alert(`Failed to create battle (${res.status})`);
+      const err = await res.json().catch(() => ({}));
+      const msg =
+        typeof err?.message === "string"
+          ? err.message
+          : `Failed to create battle (${res.status})`;
+      console.error("[createBattle]", res.status, err);
+      alert(msg);
       return;
     }
     const data = await res.json();
