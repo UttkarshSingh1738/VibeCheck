@@ -29,8 +29,11 @@ export async function getMe(token: string): Promise<{ id: string }> {
 type RawPlaylist = {
   id: string;
   name: string;
-  images: Array<{ url: string }>;
-  tracks: { total: number };
+  images?: Array<{ url: string }> | null;
+  // Spotify renamed `tracks` → `items` for new apps (post-2024) so playlists
+  // can contain episodes/audiobooks. We accept either shape.
+  items?: { total?: number | null } | null;
+  tracks?: { total?: number | null } | null;
   owner: { id: string };
 };
 
@@ -42,48 +45,74 @@ export async function listOwnPlaylists(token: string, ownerId: string): Promise<
       id: p.id,
       name: p.name,
       image: p.images?.[0]?.url ?? null,
-      trackCount: p.tracks?.total ?? 0,
+      trackCount: p.items?.total ?? p.tracks?.total ?? 0,
       ownerId: p.owner.id
     }));
 }
 
 export async function getPlaylistMeta(token: string, playlistId: string): Promise<{ name: string; total: number }> {
-  // Spotify can return `tracks: null` for empty / algorithmic / "Liked Songs"-style
-  // playlists, and the playlist endpoint shape has been getting flakier for new apps.
-  // Defensive access prevents the score route from crashing with "Cannot read properties of undefined".
-  const data = await spotifyFetch<{ name?: string | null; tracks?: { total?: number | null } | null }>(
-    token,
-    `/playlists/${playlistId}?fields=name,tracks(total)`
-  );
-  return { name: data?.name ?? "Untitled playlist", total: data?.tracks?.total ?? 0 };
+  // Request both possible field names. New apps return `items`; older apps return `tracks`.
+  const data = await spotifyFetch<{
+    name?: string | null;
+    items?: { total?: number | null } | null;
+    tracks?: { total?: number | null } | null;
+  }>(token, `/playlists/${playlistId}?fields=name,items(total),tracks(total)`);
+  return {
+    name: data?.name ?? "Untitled playlist",
+    total: data?.items?.total ?? data?.tracks?.total ?? 0
+  };
 }
 
-type RawTrackItem = {
-  track: {
-    id: string;
-    name: string;
-    album: { release_date: string | null };
-    artists: Array<{ id: string; name: string }>;
-  } | null;
+type RawTrackPayload = {
+  id: string;
+  name: string;
+  type?: string;
+  album?: { release_date?: string | null } | null;
+  artists?: Array<{ id: string; name: string }> | null;
 };
 
+type RawTrackItem = {
+  // New shape: { item: {...}, track: true }  (track is a boolean flag)
+  // Old shape: { track: {...} }              (track is the object)
+  item?: RawTrackPayload | null;
+  track?: RawTrackPayload | boolean | null;
+};
+
+function pickTrackPayload(it: RawTrackItem): RawTrackPayload | null {
+  if (it.item && typeof it.item === "object") return it.item;
+  if (it.track && typeof it.track === "object") return it.track as RawTrackPayload;
+  return null;
+}
+
 export async function getPlaylistTracks(token: string, playlistId: string, limit = 50): Promise<PlaylistTrack[]> {
-  const data = await spotifyFetch<{ items?: RawTrackItem[] | null } | null>(
-    token,
-    `/playlists/${playlistId}/tracks?limit=${limit}`
-  );
+  // /tracks is 403 for new apps; /items is the replacement (and works for older apps too).
+  let data: { items?: RawTrackItem[] | null } | null = null;
+  try {
+    data = await spotifyFetch<{ items?: RawTrackItem[] | null } | null>(
+      token,
+      `/playlists/${playlistId}/items?limit=${limit}`
+    );
+  } catch (err) {
+    console.warn("/items failed, falling back to /tracks", err);
+    data = await spotifyFetch<{ items?: RawTrackItem[] | null } | null>(
+      token,
+      `/playlists/${playlistId}/tracks?limit=${limit}`
+    );
+  }
   const items = data?.items ?? [];
   const out: PlaylistTrack[] = [];
   for (const it of items) {
-    if (!it?.track || !it.track.id) continue;
-    const year = it.track.album?.release_date
-      ? Number.parseInt(it.track.album.release_date.slice(0, 4), 10)
+    const t = pickTrackPayload(it);
+    if (!t || !t.id) continue;
+    if (t.type && t.type !== "track") continue; // skip episodes / audiobooks
+    const year = t.album?.release_date
+      ? Number.parseInt(t.album.release_date.slice(0, 4), 10)
       : null;
     out.push({
-      id: it.track.id,
-      title: it.track.name ?? "(untitled)",
-      artist: (it.track.artists ?? []).map((a) => a.name).join(", "),
-      artistId: it.track.artists?.[0]?.id ?? null,
+      id: t.id,
+      title: t.name ?? "(untitled)",
+      artist: (t.artists ?? []).map((a) => a.name).join(", "),
+      artistId: t.artists?.[0]?.id ?? null,
       year: Number.isFinite(year as number) ? (year as number) : null
     });
   }
