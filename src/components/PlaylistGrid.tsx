@@ -18,21 +18,39 @@ export function PlaylistGrid({ onSubmit, submitLabel = "Create battle" }: Props)
     let cancelled = false;
     fetch("/api/playlists")
       .then(async (r) => {
-        if (!r.ok) throw new Error(`status ${r.status}`);
-        return r.json();
+        const body = await r.json().catch(() => ({}));
+        if (r.status === 429) {
+          throw new Error(
+            body?.message ??
+              `Spotify is rate-limiting your account. Wait ~${body?.retryAfterSec ?? 30}s and reload.`
+          );
+        }
+        if (!r.ok) throw new Error(body?.message ?? `status ${r.status}`);
+        return body;
       })
       .then((d) => {
         if (!cancelled) setPlaylists(d.playlists ?? []);
       })
       .catch((e) => {
-        if (!cancelled) setError(String(e));
+        if (!cancelled) setError(String(e?.message ?? e));
       });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  if (error) return <p className="text-red-400">Couldn’t load playlists: {error}</p>;
+  if (error)
+    return (
+      <div className="space-y-3">
+        <p className="text-red-400">Couldn’t load playlists: {error}</p>
+        <button
+          onClick={() => location.reload()}
+          className="rounded-full bg-zinc-800 px-4 py-2 text-sm font-semibold hover:bg-zinc-700"
+        >
+          Retry
+        </button>
+      </div>
+    );
   if (!playlists) return <p className="text-zinc-400">Loading your playlists…</p>;
   if (playlists.length === 0) {
     return (

@@ -7,13 +7,22 @@ import type {
 
 const API = "https://api.spotify.com/v1";
 
+export class SpotifyRateLimitError extends Error {
+  constructor(public readonly retryAfterSec: number, public readonly path: string) {
+    super(`Spotify rate-limited /${path}; retry in ${retryAfterSec}s`);
+    this.name = "SpotifyRateLimitError";
+  }
+}
+
 async function spotifyFetch<T>(token: string, path: string): Promise<T> {
   const res = await fetch(`${API}${path}`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store"
   });
   if (res.status === 429) {
-    console.warn("Spotify 429 rate limit on", path);
+    const retryAfter = Number(res.headers.get("retry-after") ?? "30");
+    console.warn(`Spotify 429 rate limit on ${path}; retry-after ${retryAfter}s`);
+    throw new SpotifyRateLimitError(Number.isFinite(retryAfter) ? retryAfter : 30, path);
   }
   if (!res.ok) {
     const body = await res.text().catch(() => "");
