@@ -37,11 +37,24 @@ export async function POST(req: NextRequest) {
   const session = await auth();
   const accessToken = (session as any)?.accessToken as string | undefined;
 
+  // Best-effort fetch of the playlist display name so we can cache it.
+  let hostPlaylistName: string | null = null;
+  if (accessToken) {
+    try {
+      const { getPlaylistMeta } = await import("@/lib/spotify");
+      const meta = await getPlaylistMeta(accessToken, playlistId);
+      hostPlaylistName = meta.name;
+    } catch (err) {
+      console.warn("host playlist name lookup failed", err);
+    }
+  }
+
   const { data, error } = await supabaseAdmin()
     .from("battles")
     .insert({
       host_user_id: user.id,
       host_playlist_id: playlistId,
+      host_playlist_name: hostPlaylistName,
       host_access_token: accessToken ?? null,
       status: "waiting"
     })

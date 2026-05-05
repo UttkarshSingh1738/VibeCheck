@@ -15,6 +15,10 @@ create table if not exists battles (
   opponent_user_id uuid references users(id),
   host_playlist_id text not null,
   opponent_playlist_id text,
+  -- Cached playlist display names so the battle-detail polling endpoint
+  -- doesn't re-fetch from Spotify every 3 seconds (which gets rate-limited).
+  host_playlist_name text,
+  opponent_playlist_name text,
   -- Each side's Spotify OAuth access token, used by the background score job.
   -- Required because Spotify's Client Credentials flow no longer reliably reads
   -- playlist contents for new apps. Tokens last ~1 hour; scoring runs in seconds.

@@ -49,10 +49,38 @@ export default function VotePage() {
   if (!detail) return <p className="text-zinc-400 py-8">Loading…</p>;
 
   if (detail.battle.status !== "voting" && detail.battle.status !== "done") {
+    const status = detail.battle.status;
     return (
-      <p className="py-8 text-zinc-300">
-        This battle isn’t ready for voting yet. Status: {detail.battle.status}.
-      </p>
+      <main className="space-y-6 py-12 text-center">
+        {status === "waiting" ? (
+          <>
+            <h1 className="text-3xl font-bold">This battle still needs an opponent</h1>
+            <p className="text-zinc-400">
+              The host shared the wrong link, or the second player hasn’t joined yet.
+            </p>
+            <a
+              href={`/battle/${id}/join`}
+              className="inline-block rounded-full bg-spotify px-6 py-3 font-semibold text-black hover:brightness-110"
+            >
+              Join as the opponent →
+            </a>
+          </>
+        ) : status === "scoring" ? (
+          <>
+            <h1 className="text-3xl font-bold">Claude is scoring the playlists…</h1>
+            <p className="text-zinc-400">Refresh in a few seconds.</p>
+          </>
+        ) : status === "failed" ? (
+          <>
+            <h1 className="text-3xl font-bold text-red-400">This battle failed to score</h1>
+            <p className="text-zinc-400">The host needs to start a new one.</p>
+          </>
+        ) : (
+          <p className="text-zinc-300">
+            Battle status: <strong>{status}</strong>. Voting isn’t open yet.
+          </p>
+        )}
+      </main>
     );
   }
 

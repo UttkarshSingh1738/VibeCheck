@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { getPlaylistMeta } from "@/lib/spotify";
-import { auth } from "@/lib/auth";
 import type { BattleDetail, DBBattle, DBScorecard, DBUser, Side } from "@/lib/types";
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
@@ -28,42 +26,18 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     else if (v.choice === "opponent") tally.opponent += 1;
   }
 
-  // Best-effort playlist names: try Spotify with the requester's token, fall back to id.
-  let hostName: string | null = null;
-  let oppName: string | null = null;
-  try {
-    const session = await auth();
-    const token = (session as any)?.accessToken as string | undefined;
-    if (token) {
-      const tasks: Promise<void>[] = [];
-      tasks.push(
-        getPlaylistMeta(token, battle.host_playlist_id)
-          .then((m) => {
-            hostName = m.name;
-          })
-          .catch(() => undefined)
-      );
-      if (battle.opponent_playlist_id) {
-        tasks.push(
-          getPlaylistMeta(token, battle.opponent_playlist_id)
-            .then((m) => {
-              oppName = m.name;
-            })
-            .catch(() => undefined)
-        );
-      }
-      await Promise.all(tasks);
-    }
-  } catch {
-    /* ignore */
-  }
-
+  // Names are cached on the battle row at create/join time. No Spotify call
+  // here — this endpoint is hit every 3s by the polling UI, which would
+  // otherwise hammer Spotify and trigger 429 rate limits.
   const detail: BattleDetail = {
     battle,
-    host: { user: userById.get(battle.host_user_id) ?? null, playlistName: hostName },
+    host: {
+      user: userById.get(battle.host_user_id) ?? null,
+      playlistName: battle.host_playlist_name
+    },
     opponent: {
       user: battle.opponent_user_id ? userById.get(battle.opponent_user_id) ?? null : null,
-      playlistName: oppName
+      playlistName: battle.opponent_playlist_name
     },
     scorecards: {
       host: cardBySide.get("host") ?? null,

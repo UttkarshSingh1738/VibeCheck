@@ -27,11 +27,25 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const session = await auth();
   const accessToken = (session as any)?.accessToken as string | undefined;
 
+  // Best-effort fetch of the opponent's playlist display name (cached so the
+  // polling battle-detail endpoint doesn't re-hit Spotify on every tick).
+  let oppPlaylistName: string | null = null;
+  if (accessToken) {
+    try {
+      const { getPlaylistMeta } = await import("@/lib/spotify");
+      const meta = await getPlaylistMeta(accessToken, playlistId);
+      oppPlaylistName = meta.name;
+    } catch (err) {
+      console.warn("opponent playlist name lookup failed", err);
+    }
+  }
+
   const { error } = await sb
     .from("battles")
     .update({
       opponent_user_id: user.id,
       opponent_playlist_id: playlistId,
+      opponent_playlist_name: oppPlaylistName,
       opponent_access_token: accessToken ?? null,
       status: "scoring"
     })

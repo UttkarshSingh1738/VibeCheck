@@ -55,6 +55,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (profile && (profile as any).id) {
         token.spotifyId = (profile as any).id;
       }
+
+      // Refresh the Spotify access token if it's expired (or about to be).
+      // 60s of slack so we don't return a token that dies mid-request.
+      const now = Math.floor(Date.now() / 1000);
+      const expiresAt = Number(token.expiresAt ?? 0);
+      if (expiresAt && expiresAt - 60 < now && token.refreshToken) {
+        try {
+          const refreshed = await refreshSpotifyToken(token.refreshToken as string);
+          token.accessToken = refreshed.access_token;
+          token.expiresAt = now + refreshed.expires_in;
+          // Spotify sometimes rotates the refresh token; keep the new one if so.
+          if (refreshed.refresh_token) token.refreshToken = refreshed.refresh_token;
+        } catch (err) {
+          console.warn("Spotify token refresh failed", err);
+          // Mark token as invalid so the next request will require re-login.
+          (token as any).error = "RefreshFailed";
+        }
+      }
       return token;
     },
     async session({ session, token }) {
@@ -102,4 +120,30 @@ export async function getCurrentDbUser() {
 export async function getAccessToken(): Promise<string | null> {
   const session = await auth();
   return ((session as any)?.accessToken as string | undefined) ?? null;
+}
+
+async function refreshSpotifyToken(
+  refreshToken: string
+): Promise<{ access_token: string; expires_in: number; refresh_token?: string }> {
+  const id = process.env.SPOTIFY_CLIENT_ID;
+  const secret = process.env.SPOTIFY_CLIENT_SECRET;
+  if (!id || !secret) throw new Error("Spotify client creds missing");
+  const basic = Buffer.from(`${id}:${secret}`).toString("base64");
+  const res = await fetch("https://accounts.spotify.com/api/token", {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${basic}`,
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken
+    }).toString(),
+    cache: "no-store"
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`spotify refresh ${res.status}: ${body.slice(0, 200)}`);
+  }
+  return (await res.json()) as { access_token: string; expires_in: number; refresh_token?: string };
 }
