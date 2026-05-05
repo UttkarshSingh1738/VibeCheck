@@ -95,45 +95,66 @@ type RawAudioFeatures = {
   instrumentalness: number;
 } | null;
 
+const ZERO_AUDIO: AudioFeaturesAvg = {
+  danceability: 0,
+  energy: 0,
+  valence: 0,
+  tempo: 0,
+  acousticness: 0,
+  instrumentalness: 0
+};
+
+// Spotify deprecated /audio-features for apps created after 2024-11-27. New
+// apps get a 403. We fall back to zeros so scoring still works — Claude is
+// instructed to ignore the audio block when everything is zero.
 export async function getAudioFeaturesAvg(token: string, trackIds: string[]): Promise<AudioFeaturesAvg> {
-  if (trackIds.length === 0) {
-    return { danceability: 0, energy: 0, valence: 0, tempo: 0, acousticness: 0, instrumentalness: 0 };
+  if (trackIds.length === 0) return { ...ZERO_AUDIO };
+  try {
+    const data = await spotifyFetch<{ audio_features: RawAudioFeatures[] }>(
+      token,
+      `/audio-features?ids=${trackIds.join(",")}`
+    );
+    const vals = data.audio_features.filter((x): x is NonNullable<RawAudioFeatures> => !!x);
+    if (vals.length === 0) return { ...ZERO_AUDIO };
+    const n = vals.length;
+    const sum = (k: keyof NonNullable<RawAudioFeatures>) =>
+      vals.reduce((acc, v) => acc + (v[k] ?? 0), 0) / n;
+    return {
+      danceability: round2(sum("danceability")),
+      energy: round2(sum("energy")),
+      valence: round2(sum("valence")),
+      tempo: Math.round(sum("tempo")),
+      acousticness: round2(sum("acousticness")),
+      instrumentalness: round2(sum("instrumentalness"))
+    };
+  } catch (err) {
+    console.warn("audio-features unavailable (likely deprecated for new app), continuing with zeros", err);
+    return { ...ZERO_AUDIO };
   }
-  const data = await spotifyFetch<{ audio_features: RawAudioFeatures[] }>(
-    token,
-    `/audio-features?ids=${trackIds.join(",")}`
-  );
-  const vals = data.audio_features.filter((x): x is NonNullable<RawAudioFeatures> => !!x);
-  const n = vals.length || 1;
-  const sum = (k: keyof NonNullable<RawAudioFeatures>) =>
-    vals.reduce((acc, v) => acc + (v[k] ?? 0), 0) / n;
-  return {
-    danceability: round2(sum("danceability")),
-    energy: round2(sum("energy")),
-    valence: round2(sum("valence")),
-    tempo: Math.round(sum("tempo")),
-    acousticness: round2(sum("acousticness")),
-    instrumentalness: round2(sum("instrumentalness"))
-  };
 }
 
 export async function getTopGenres(token: string, artistIds: string[]): Promise<string[]> {
   const unique = Array.from(new Set(artistIds.filter(Boolean))).slice(0, 50);
   if (unique.length === 0) return [];
-  const data = await spotifyFetch<{ artists: Array<{ genres: string[] }> }>(
-    token,
-    `/artists?ids=${unique.join(",")}`
-  );
-  const counts = new Map<string, number>();
-  for (const a of data.artists) {
-    for (const g of a.genres ?? []) {
-      counts.set(g, (counts.get(g) ?? 0) + 1);
+  try {
+    const data = await spotifyFetch<{ artists: Array<{ genres: string[] }> }>(
+      token,
+      `/artists?ids=${unique.join(",")}`
+    );
+    const counts = new Map<string, number>();
+    for (const a of data.artists) {
+      for (const g of a.genres ?? []) {
+        counts.set(g, (counts.get(g) ?? 0) + 1);
+      }
     }
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([g]) => g);
+  } catch (err) {
+    console.warn("artist genres unavailable, continuing without", err);
+    return [];
   }
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([g]) => g);
 }
 
 function round2(n: number): number {

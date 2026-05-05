@@ -5,6 +5,12 @@ Things that diverge from `VibeCheck_Build_Spec.md`, plus shortcuts taken to keep
 ## Model
 - Spec: `claude-sonnet-4-5`. Used: `claude-sonnet-4-6` (current Sonnet at the time of writing). Swap the constant in `src/lib/claude.ts` if needed.
 
+## Spotify endpoint deprecation (Nov 2024)
+- Spotify removed several Web API endpoints for apps **created after 2024-11-27**: `/v1/audio-features`, `/v1/audio-analysis`, `/v1/recommendations`, related artists, featured playlists, etc. The artist `genres` field is also progressively going empty.
+- `getAudioFeaturesAvg` and `getTopGenres` now catch failures and return safe fallbacks (zeros / empty array) so scoring still completes.
+- The Claude system prompt is updated to ignore the audio-feature and genre blocks when they're empty/zero, and score off the track list + eras + its own knowledge of the songs.
+- Net effect: scores are still meaningful but rely entirely on Claude's prior knowledge of the tracks. Pre-2024 Spotify apps would get richer signals.
+
 ## Spotify token used during scoring
 - The scoring pipeline runs server-to-server (no user session present), so we use the **Client Credentials** flow to get a token. That token can only read **public** playlists.
 - Implication: if a user picks a *private* playlist, scoring will fail with a Spotify 4xx and the battle goes to `status='failed'`. The UI shows a clear message asking the user to make their playlist public.

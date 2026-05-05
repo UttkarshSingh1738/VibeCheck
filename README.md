@@ -92,6 +92,7 @@ pnpm build       # production build
 - **Spotify redirect URI / “INVALID_CLIENT: Invalid redirect URI”** — Dashboard redirect URI, `NEXTAUTH_URL`, and the URL you open in the browser must all use the same host. For local dev use `http://127.0.0.1:3000` everywhere, not `localhost` (Spotify blocks `localhost` for new apps).
 - **"playlists fetch failed 401"** — your Spotify session expired. Sign out and back in.
 - **Battle stuck on `scoring`** — check the server console. Most common cause: an opponent picked a *private* playlist that the client-credentials Spotify token can't read. Make playlists public, or see DECISIONS.md for the documented limitation.
+- **Score route 500 with `audio-features` 403 in logs** — Spotify deprecated `/v1/audio-features`, `/v1/recommendations`, and a few others for apps **created after 2024-11-27**. The scoring pipeline degrades gracefully (zeros for audio features, empty list for genres) and Claude is told to ignore them. If you want them back: use an older Spotify app, or wait for Spotify to restore access.
 - **Claude returns garbage JSON** — tighten the system prompt in `src/lib/claude.ts`. Raw responses are stored in `scorecards.raw_response` for debugging.
 - **Supabase auth weird** — never expose the `service_role` key to the browser. Anything imported from `@/lib/supabase` is server-only.
 

@@ -16,6 +16,8 @@ Scoring dimensions:
 
 Be opinionated but fair. Penalize playlists that lean entirely on popularity. Reward thoughtful curation. Commentary should be 2–3 sentences, conversational, and specific to this playlist.
 
+Note: audio features and top genres may be unavailable (Spotify deprecated those endpoints for new apps). If all audio-feature averages are 0 or top genres is empty, ignore those sections entirely and score based on the track list, eras, and your own knowledge of the songs and artists.
+
 Output ONLY this JSON shape, no other text:
 {
   "cohesion": <0-100 integer>,
