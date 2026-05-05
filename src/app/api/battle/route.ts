@@ -34,11 +34,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "playlistId required" }, { status: 400 });
   }
 
+  const session = await auth();
+  const accessToken = (session as any)?.accessToken as string | undefined;
+
   const { data, error } = await supabaseAdmin()
     .from("battles")
     .insert({
       host_user_id: user.id,
       host_playlist_id: playlistId,
+      host_access_token: accessToken ?? null,
       status: "waiting"
     })
     .select("id")

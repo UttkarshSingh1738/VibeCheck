@@ -31,28 +31,28 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ status: "already_scored" });
   }
 
-  await logEvent("score_started", battle.id, {});
-
-  // Pull both users so we can use their stored Spotify access tokens... but
-  // we don't store tokens. The simpler path: use *one* token (the opponent's
-  // access token from the request that triggered the score), but this route
-  // is called server-to-server with no user session. So we need a token.
-  //
-  // For the MVP we use the Client Credentials flow to get a token that can
-  // read PUBLIC playlists. Personal playlists must be public for scoring to
-  // work. This is documented in DECISIONS.md.
-  let token: string;
-  try {
-    token = await getClientCredentialsToken();
-  } catch (err) {
-    console.error("failed to get client credentials token", err);
+  // We need each user's own OAuth access token to read their playlists. The
+  // join route stashed both on the battle row. Spotify's Client Credentials
+  // flow no longer reliably reads playlist `/items` for new apps.
+  const hostToken = battle.host_access_token as string | null;
+  const oppToken = battle.opponent_access_token as string | null;
+  if (!hostToken || !oppToken) {
     await sb.from("battles").update({ status: "failed" }).eq("id", battle.id);
-    await logEvent("score_failed", battle.id, { stage: "token", err: String(err) });
-    return NextResponse.json({ error: "spotify_token_failed" }, { status: 502 });
+    await logEvent("score_failed", battle.id, { stage: "missing_token", hostToken: !!hostToken, oppToken: !!oppToken });
+    return NextResponse.json(
+      {
+        error: "missing_user_tokens",
+        detail:
+          "Battle is missing one of the user OAuth tokens. Both players must sign in fresh and start a new battle (older battles created before this fix can't be scored)."
+      },
+      { status: 400 }
+    );
   }
 
+  await logEvent("score_started", battle.id, {});
+
   const work: Array<Promise<void>> = [];
-  const scoreSide = async (side: Side, playlistId: string) => {
+  const scoreSide = async (side: Side, playlistId: string, token: string) => {
     if (existingSides.has(side)) return;
     try {
       const summary = await buildPlaylistSummary(token, playlistId);
@@ -74,8 +74,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }
   };
 
-  work.push(scoreSide("host", battle.host_playlist_id));
-  work.push(scoreSide("opponent", battle.opponent_playlist_id));
+  work.push(scoreSide("host", battle.host_playlist_id, hostToken));
+  work.push(scoreSide("opponent", battle.opponent_playlist_id, oppToken));
 
   try {
     await Promise.all(work);
@@ -85,6 +85,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: "scoring_failed", detail: String(err) }, { status: 500 });
   }
 
+  // Clear the stored tokens once we're done — we don't need them anymore and
+  // they're sensitive. Best-effort; ignore failures.
+  void sb
+    .from("battles")
+    .update({ host_access_token: null, opponent_access_token: null })
+    .eq("id", battle.id);
+
   const closesAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
   await sb
     .from("battles")
@@ -93,23 +100,4 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   await logEvent("score_completed", battle.id, {});
   return NextResponse.json({ status: "voting" });
-}
-
-async function getClientCredentialsToken(): Promise<string> {
-  const id = process.env.SPOTIFY_CLIENT_ID;
-  const secret = process.env.SPOTIFY_CLIENT_SECRET;
-  if (!id || !secret) throw new Error("Spotify client creds missing");
-  const basic = Buffer.from(`${id}:${secret}`).toString("base64");
-  const res = await fetch("https://accounts.spotify.com/api/token", {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${basic}`,
-      "Content-Type": "application/x-www-form-urlencoded"
-    },
-    body: "grant_type=client_credentials",
-    cache: "no-store"
-  });
-  if (!res.ok) throw new Error(`spotify token ${res.status}`);
-  const data = (await res.json()) as { access_token: string };
-  return data.access_token;
 }

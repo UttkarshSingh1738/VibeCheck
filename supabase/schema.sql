@@ -15,6 +15,11 @@ create table if not exists battles (
   opponent_user_id uuid references users(id),
   host_playlist_id text not null,
   opponent_playlist_id text,
+  -- Each side's Spotify OAuth access token, used by the background score job.
+  -- Required because Spotify's Client Credentials flow no longer reliably reads
+  -- playlist contents for new apps. Tokens last ~1 hour; scoring runs in seconds.
+  host_access_token text,
+  opponent_access_token text,
   status text not null default 'waiting',  -- waiting | scoring | voting | done | failed
   vote_closes_at timestamptz,
   winner text,                             -- 'host' | 'opponent' | null

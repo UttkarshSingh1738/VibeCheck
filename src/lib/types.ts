@@ -17,6 +17,8 @@ export type DBBattle = {
   opponent_user_id: string | null;
   host_playlist_id: string;
   opponent_playlist_id: string | null;
+  host_access_token: string | null;
+  opponent_access_token: string | null;
   status: BattleStatus;
   vote_closes_at: string | null;
   winner: Side | null;

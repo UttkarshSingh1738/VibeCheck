@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { waitUntil } from "@vercel/functions";
-import { getCurrentDbUser } from "@/lib/auth";
+import { auth, getCurrentDbUser } from "@/lib/auth";
 import { logEvent, supabaseAdmin } from "@/lib/supabase";
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
@@ -24,11 +24,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: "battle_full" }, { status: 409 });
   }
 
+  const session = await auth();
+  const accessToken = (session as any)?.accessToken as string | undefined;
+
   const { error } = await sb
     .from("battles")
     .update({
       opponent_user_id: user.id,
       opponent_playlist_id: playlistId,
+      opponent_access_token: accessToken ?? null,
       status: "scoring"
     })
     .eq("id", params.id);
