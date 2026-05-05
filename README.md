@@ -2,7 +2,13 @@
 
 Whose music taste is actually better? Two friends pick Spotify playlists, Claude scores them, voters pick a winner, and a hybrid score crowns the champion.
 
-This is a class-project MVP built from `VibeCheck_Build_Spec.md`. See [HOW_IT_WORKS.md](./HOW_IT_WORKS.md) for an end-user walkthrough and [DECISIONS.md](./DECISIONS.md) for the shortcuts that were taken.
+This is a class-project MVP built from `VibeCheck_Build_Spec.md`.
+
+**Documentation map:**
+- [REPORT.md](./REPORT.md) — final technical report (product, architecture, AI integration, evaluation, cost, production readiness)
+- [README_AI.md](./README_AI.md) — AI subsystem deep-dive (workflow, model selection, design decisions, the actual prompts)
+- [HOW_IT_WORKS.md](./HOW_IT_WORKS.md) — architecture walkthrough + data-flow diagram
+- [DECISIONS.md](./DECISIONS.md) — every shortcut taken, with rationale
 
 ---
 
@@ -41,6 +47,20 @@ cp .env.example .env.local
 pnpm dev     # or: npm run dev — binds to 127.0.0.1 (see package.json)
 ```
 Open **http://127.0.0.1:3000** (must match `NEXTAUTH_URL` and Spotify redirect URI). If you use `http://localhost:3000` instead, the app will one-shot redirect to loopback via `DevHostRedirect`; prefer opening 127.0.0.1 directly to avoid host ping-pong during OAuth.
+
+---
+
+## Where to access the AI feature
+
+The AI is part of the normal user flow — not a standalone screen. After both players have picked playlists, the **scoring pipeline** (Spotify aggregation → Claude → strict-JSON scorecard) fires automatically and produces the `AI's Verdict` panel on `/battle/[id]`.
+
+- **Trigger point:** when the opponent joins (`POST /api/battle/[id]/join`), which fires `POST /api/battle/[id]/score` in the background via Vercel `waitUntil`.
+- **AI orchestration code:** `src/app/api/battle/[id]/score/route.ts`
+- **Prompt + model call:** `src/lib/claude.ts`
+- **Hybrid scoring math (AI + votes):** `src/lib/score.ts`
+- **The reveal UI:** `src/app/battle/[id]/page.tsx` (the `voting`-state branch is the AI verdict panel)
+
+For full AI design notes, see [README_AI.md](./README_AI.md).
 
 ---
 
