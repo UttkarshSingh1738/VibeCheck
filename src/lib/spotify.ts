@@ -48,11 +48,14 @@ export async function listOwnPlaylists(token: string, ownerId: string): Promise<
 }
 
 export async function getPlaylistMeta(token: string, playlistId: string): Promise<{ name: string; total: number }> {
-  const data = await spotifyFetch<{ name: string; tracks: { total: number } }>(
+  // Spotify can return `tracks: null` for empty / algorithmic / "Liked Songs"-style
+  // playlists, and the playlist endpoint shape has been getting flakier for new apps.
+  // Defensive access prevents the score route from crashing with "Cannot read properties of undefined".
+  const data = await spotifyFetch<{ name?: string | null; tracks?: { total?: number | null } | null }>(
     token,
     `/playlists/${playlistId}?fields=name,tracks(total)`
   );
-  return { name: data.name, total: data.tracks.total };
+  return { name: data?.name ?? "Untitled playlist", total: data?.tracks?.total ?? 0 };
 }
 
 type RawTrackItem = {
@@ -65,21 +68,22 @@ type RawTrackItem = {
 };
 
 export async function getPlaylistTracks(token: string, playlistId: string, limit = 50): Promise<PlaylistTrack[]> {
-  const data = await spotifyFetch<{ items: RawTrackItem[] }>(
+  const data = await spotifyFetch<{ items?: RawTrackItem[] | null } | null>(
     token,
     `/playlists/${playlistId}/tracks?limit=${limit}`
   );
+  const items = data?.items ?? [];
   const out: PlaylistTrack[] = [];
-  for (const it of data.items) {
-    if (!it.track || !it.track.id) continue;
+  for (const it of items) {
+    if (!it?.track || !it.track.id) continue;
     const year = it.track.album?.release_date
       ? Number.parseInt(it.track.album.release_date.slice(0, 4), 10)
       : null;
     out.push({
       id: it.track.id,
-      title: it.track.name,
-      artist: it.track.artists.map((a) => a.name).join(", "),
-      artistId: it.track.artists[0]?.id ?? null,
+      title: it.track.name ?? "(untitled)",
+      artist: (it.track.artists ?? []).map((a) => a.name).join(", "),
+      artistId: it.track.artists?.[0]?.id ?? null,
       year: Number.isFinite(year as number) ? (year as number) : null
     });
   }
@@ -170,6 +174,11 @@ function bucketYear(year: number | null): string | null {
 export async function buildPlaylistSummary(token: string, playlistId: string): Promise<PlaylistSummary> {
   const meta = await getPlaylistMeta(token, playlistId);
   const tracks = await getPlaylistTracks(token, playlistId, 50);
+  if (tracks.length === 0) {
+    throw new Error(
+      `Playlist ${playlistId} returned 0 tracks. It may be empty, private, or an algorithmic playlist (e.g. Liked Songs / Discover Weekly) that Spotify's client-credentials token can't read.`
+    );
+  }
   const trackIds = tracks.map((t) => t.id);
   const artistIds = tracks.map((t) => t.artistId).filter((x): x is string => !!x);
 
